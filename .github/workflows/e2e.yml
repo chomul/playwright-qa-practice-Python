@@ -1,0 +1,156 @@
+# ══════════════════════════════════════════════════════════════
+#  e2e.yml : Playwright(Python) E2E 테스트 자동 실행 계획서
+#
+#  이 파일이 정하는 것은 딱 3가지
+#    언제?   → on:
+#    어디서? → runs-on: / matrix:
+#    무엇을? → steps:
+#
+#  위치 : 반드시 저장소 루트의 .github/workflows/ 안에 있어야 GitHub이 인식
+#  문법 : 들여쓰기는 스페이스 2칸만 (탭 쓰면 에러)
+#         "키: 값" 형태, 콜론(:) 뒤에는 반드시 한 칸 띄우기
+#         "- " 로 시작하면 목록(배열)의 한 항목
+# ══════════════════════════════════════════════════════════════
+
+# 워크플로 이름 → GitHub Actions 탭 왼쪽 목록에 이 이름으로 표시됨
+name: E2E Tests
+
+# ──────────────────────────────────────────────────────────────
+#  언제? (Trigger)
+#  아래 이벤트 중 "하나라도" 발생하면 워크플로 시작
+# ──────────────────────────────────────────────────────────────
+on:
+  # ① main 브랜치에 커밋을 push 했을 때
+  push:
+    branches: [main] # [main, develop] 처럼 여러 개 가능
+
+  # ② main 브랜치로 들어가는 PR을 만들거나, 그 PR에 커밋을 추가했을 때
+  #    (branches = PR의 "목적지" 브랜치 기준)
+  pull_request:
+    branches: [main]
+
+  # ③ Actions 탭 → E2E Tests → [Run workflow] 버튼으로 수동 실행
+  #    코드는 그대로 두고 다시 돌려보고 싶을 때 사용
+  #    값이 없어도 키만 적어두면 버튼이 생김
+  workflow_dispatch:
+
+# ──────────────────────────────────────────────────────────────
+#  jobs : 실제로 할 작업 묶음 목록
+#  Job이 여러 개면 기본적으로 "동시에" 실행됨
+#  (순서가 필요하면 needs: [다른job이름] 사용)
+# ──────────────────────────────────────────────────────────────
+jobs:
+  # Job의 ID (내가 정하는 이름, 영어·숫자·하이픈·언더스코어만)
+  # Actions 화면에는 "e2e (ubuntu-latest)" 처럼 표시됨
+  e2e:
+    # ────────────────────────────────────────────────────────
+    #  어디서? (Runner)
+    # ────────────────────────────────────────────────────────
+
+    # strategy : 같은 Job을 조건만 바꿔서 여러 번 실행하는 설정
+    strategy:
+      # 한 OS가 실패해도 다른 OS는 취소하지 말고 끝까지 실행
+      # (기본값 true → 하나 실패하면 나머지 전부 취소됨)
+      fail-fast: false
+
+      # [8단계에서 추가] 동시에 몇 개까지 돌릴지
+      # 1 = 하나씩 순서대로 → 같은 테스트 계정으로 동시 로그인해서 꼬이는 것 방지
+      # max-parallel: 1
+
+      # matrix : 여기 적은 값 개수만큼 Job이 복제됨
+      #   [ubuntu-latest]                 → Job 1개
+      #   [ubuntu-latest, windows-latest] → Job 2개 (8단계)
+      matrix:
+        os: [ubuntu-latest]
+
+    # 실제로 명령을 실행할 GitHub의 가상 컴퓨터(Runner) 종류
+    # ${{ }} = yml 안에서 변수를 꺼내 쓰는 문법
+    # matrix.os 값이 그대로 들어감 → runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+
+    # 이 시간 안에 안 끝나면 강제 종료 (기본값 360분)
+    # 테스트가 무한 대기에 빠져도 무료 사용 시간을 다 쓰지 않도록 보호
+    timeout-minutes: 20
+
+    # ────────────────────────────────────────────────────────
+    #  무엇을? (Steps)
+    #  ★ Step은 위 → 아래 "적힌 순서대로" 실행
+    #  ★ 하나라도 실패하면 그 아래 Step은 기본적으로 건너뜀
+    #
+    #  uses: 남이 만들어 둔 Action을 가져와 실행 (라이브러리 같은 것)
+    #  run:  터미널 명령어를 직접 실행
+    # ────────────────────────────────────────────────────────
+    steps:
+      # ── 0. 코드 가져오기 ──────────────────────────────────
+      # Runner는 아무것도 없는 새 컴퓨터
+      # → 내 저장소 코드(test_*.py, requirements.txt 등)를 복사해 와야 함
+      # @v4 = 이 Action의 버전 (버전을 고정해야 갑자기 동작이 바뀌지 않음)
+      - uses: actions/checkout@v4
+
+      # ── 1. 설치 ───────────────────────────────────────────
+      # 1-1. Python 설치
+      - uses: actions/setup-python@v5
+        with: # with: = 이 Action에 넘기는 옵션
+          # 로컬과 같은 버전 (로컬 pyc 파일이 cpython-312 → 3.12)
+          # 따옴표 필수 : 3.10 처럼 쓰면 숫자 3.1로 읽힐 수 있음
+          python-version: "3.12"
+
+          # pip 다운로드 파일을 캐시 → 두 번째 실행부터 설치가 빨라짐
+          # requirements.txt 내용이 바뀌면 캐시도 자동으로 새로 만듦
+          cache: pip
+
+      # 1-2. 파이썬 패키지 설치
+      # requirements.txt 에 적힌 pytest-playwright 설치
+      # (pytest, playwright 라이브러리도 같이 설치됨)
+      - run: pip install -r requirements.txt
+
+      # 1-3. Playwright 전용 브라우저 설치
+      # pip 는 "라이브러리"만 설치 → 실제 브라우저는 따로 받아야 함
+      #   chromium     : 크로미움만 설치 (firefox, webkit 생략 → 시간 절약)
+      #   --with-deps  : 브라우저 실행에 필요한 OS 라이브러리까지 설치
+      #                  (Ubuntu 에서 없으면 브라우저가 안 켜짐)
+      - run: python -m playwright install --with-deps chromium
+
+      # ── 2. 테스트 실행 ────────────────────────────────────
+      # pytest 가 test_*.py 파일을 찾아서 전부 실행
+      #   -v                            : 테스트 이름별로 PASSED / FAILED 자세히 출력
+      #   --screenshot=only-on-failure  : 실패한 테스트만 마지막 화면 스크린샷 저장
+      #   --tracing=retain-on-failure   : 실패한 테스트만 trace.zip 저장
+      #                                   (Trace Viewer로 실패 장면 재생 가능)
+      #   → 결과물은 test-results/ 폴더에 저장됨
+      # ※ 테스트끼리의 실행 순서는 yml 이 아니라 pytest 가 결정
+      - run: pytest -v --screenshot=only-on-failure --tracing=retain-on-failure
+
+        # env: 이 Step에서만 쓰는 환경변수
+        # 코드의 os.environ["TEST_EMAIL"] 이 여기서 값을 받음
+        # secrets.xxx = 저장소 Settings → Secrets 에 등록한 값
+        #   - 로그에는 *** 로 가려져서 출력됨
+        #   - 이름은 대소문자까지 똑같아야 함
+        env:
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
+      # ── 3. 결과 업로드 ────────────────────────────────────
+      # Runner 컴퓨터는 작업이 끝나면 통째로 삭제됨
+      # → 스크린샷 · trace 를 GitHub에 올려둬야 나중에 다운로드 가능
+      - uses: actions/upload-artifact@v4
+
+        # ★ 핵심 : 위 pytest Step이 실패해도 이 Step은 실행
+        #   if 가 없으면 테스트 실패 → 업로드 건너뜀 → 정작 필요한 실패 자료가 사라짐
+        #   !cancelled() = "사용자가 직접 취소한 경우만 빼고 항상 실행"
+        if: ${{ !cancelled() }}
+
+        with:
+          # Actions 화면 Artifacts 목록에 보일 이름
+          # OS 를 붙여야 Windows 를 추가했을 때 이름이 겹치지 않음 (겹치면 에러)
+          name: test-results-${{ matrix.os }}
+
+          # 업로드할 경로 목록
+          # | = 여러 줄을 그대로 하나의 값으로 묶는 yml 문법
+          path: |
+            test-results/
+            *.png
+
+          # 업로드한 파일을 며칠 보관할지 (기본 90일)
+          # 연습용이라 짧게 → 저장 용량 절약
+          retention-days: 14
