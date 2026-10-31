@@ -25,6 +25,7 @@ def add_product_to_cart(page: Page, quantity: str = "1"):
     """결제 테스트에서도 재사용할 수 있게 함수로 분리"""
     page.goto(f"{BASE}/product_details/28")
     page.fill("#quantity", quantity)
+    page.click("button.cart")
 
     # 팝업의 "View Cart" 링크가 보일 때까지 기다렸다가 클릭
     #   → 담기가 끝나야 팝업이 뜨므로, 자연스럽게 담기 완료를 기다리게 됨
@@ -112,7 +113,6 @@ def test_search_and_add_to_cart(logged_in_page: Page):
 
     # 장바구니 추가
     page.click("button.cart")
-    page.click("a[href='/view_cart']")
     page.get_by_role("link", name="View Cart").click()
 
     # 장바구니에서 수량 확인
